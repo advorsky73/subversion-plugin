@@ -1,3 +1,6 @@
+# This fork was created to have a SVNRepositoryView.java class without the usage of a MAPDB cache file. The cache file caused a lot of troubles in our Jenkins system running on Windows Server, e.g. getting locked and Jenkins pipelines failed to load jenkinsfiles because of a locked mapdb cache file. There will be no other changes in this fork, except for this one class and one purpose.
+
+
 Jenkins Subversion Plugin
 =========================
 
