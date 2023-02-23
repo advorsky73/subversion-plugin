@@ -28,8 +28,6 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.scm.*;
 import jenkins.model.Jenkins;
-import org.mapdb.DB;
-import org.mapdb.DBMaker;
 import org.tmatesoft.svn.core.ISVNDirEntryHandler;
 import org.tmatesoft.svn.core.SVNDirEntry;
 import org.tmatesoft.svn.core.SVNException;
@@ -47,6 +45,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -58,7 +57,6 @@ public class SVNRepositoryView {
     public static final int DIRENTS =
             SVNDirEntry.DIRENT_CREATED_REVISION | SVNDirEntry.DIRENT_KIND | SVNDirEntry.DIRENT_TIME;
     private static final Logger LOGGER = Logger.getLogger(SVNRepositoryView.class.getName());
-    private final DB cache;
     private final SVNRepository repository;
     private final ConcurrentMap<String, NodeEntry> data;
     private final String uuid;
@@ -93,27 +91,8 @@ public class SVNRepositoryView {
             if (uuid == null) { // TODO is this even possible? Javadoc is unclear.
                 throw new IOException("Could not find UUID for " + repoURL);
             }
-            File cacheFile = new File(new File(Jenkins.getInstance().getRootDir(), "caches"), "svn-" + uuid + ".db");
 
-            cacheFile.getParentFile().mkdirs();
-            DB cache = null;
-            int count = 0;
-            while (cache == null) {
-                try {
-                    cache = DBMaker.newFileDB(cacheFile)
-                            .cacheWeakRefEnable()
-                            .make();
-                } catch (Throwable t) { // this library seems to have nonstandard exception handling
-                    cacheFile.delete();
-                    LOGGER.log(Level.WARNING, "failing to make/load " + cacheFile, t);
-                    if (++count >= 10) {
-                        throw new IOException("failed to make/load " + cacheFile + ": " + t, t);
-                    }
-                }
-            }
-            this.cache = cache;
-            this.data = this.cache.getHashMap(credentials == null ? "data" : "data-" + credentials.getId());
-            cache.commit();
+            this.data = new ConcurrentHashMap<>();
             success = true;
         } finally {
             if (!success) {
@@ -132,7 +111,7 @@ public class SVNRepositoryView {
     }
 
     public boolean isClosed() {
-        return cache.isClosed();
+        return true;
     }
 
     public void close() {
@@ -140,7 +119,6 @@ public class SVNRepositoryView {
             return;
         }
         repository.closeSession();
-        cache.close();
     }
 
     public SVNNodeKind checkPath(String path, long revision) throws SVNException {
@@ -180,7 +158,6 @@ public class SVNRepositoryView {
     private void setNodeEntry(String path, NodeEntry nodeEntry) {
         try {
             data.put(path, nodeEntry);
-            cache.commit();
         } catch (Throwable t) {
             // ignore, it's only a cache
         }
